@@ -1,8 +1,22 @@
 import asyncio
+from asyncio.log import logger
+from functools import wraps
+import html
+import json
+import time
+import traceback
 from telegram import Chat, Update
-from telegram.ext import CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import CommandHandler, MessageHandler, filters, ContextTypes, Application
+import dbm
+from typing import Callable
+from datetime import datetime
 
 import settings
+
+banned_db = dbm.open(file="data/banned.dbm", flag="c")
+BANNED_STR = "b"
+
+banlist_db = dbm.open(file="data/banlist.dbm", flag="c")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(settings.USER_SIDE__WELCOME_MESSAGE)
@@ -93,14 +107,7 @@ async def forward_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'from': {'id': 49820636, 'first_name': 'Daniil', 'is_bot': False, 'last_name': 'Okhlopkov', 'username': 'danokhlopkov', 'language_code': 'en'}
     }"""
     if update.message.reply_to_message.from_user.id == context.bot.id:
-        user_id = None
-        if update.message.reply_to_message.forward_from:
-            user_id = update.message.reply_to_message.forward_from.id
-        elif update.message.reply_to_message.text and settings.SUPPORT_SIDE__REPLY_TO_THIS_MESSAGE in update.message.reply_to_message.text or settings.SUPPORT_SIDE__USER_TRIED_FORWARDING_MESSAGE in update.message.reply_to_message.text:
-            try:
-                user_id = int(update.message.reply_to_message.text.split(' ')[0])
-            except ValueError:
-                user_id = None
+        user_id = get_user_id(update)
         if user_id:
             message_id = await context.bot.copy_message(
                 message_id=update.message.message_id,
@@ -127,9 +134,178 @@ async def forward_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode='HTML'
             )
 
+def get_user_id(update: Update):
+    if update.message.reply_to_message.forward_from:
+        user_id = update.message.reply_to_message.forward_from.id
+    elif update.message.reply_to_message.text and settings.SUPPORT_SIDE__REPLY_TO_THIS_MESSAGE in update.message.reply_to_message.text or settings.SUPPORT_SIDE__USER_TRIED_FORWARDING_MESSAGE in update.message.reply_to_message.text:
+        try:
+            user_id = int(update.message.reply_to_message.text.split(' ')[0])
+        except ValueError:
+            user_id = None
+    return user_id
 
 
-def setup_dispatcher(app):
-    app.add_handler(CommandHandler('start', start))
-    app.add_handler(MessageHandler(filters.ChatType.PRIVATE, forward_to_chat))
-    app.add_handler(MessageHandler(filters.Chat(settings.TELEGRAM_SUPPORT_CHAT_ID) & filters.REPLY, forward_to_user))
+
+def ban(user_id: int, reason: str):
+    banned_db[str(user_id)] = BANNED_STR
+    banlist_db[str(user_id)] = datetime.now().replace(microsecond=0).isoformat().replace("T", " ") + "\n      " + reason
+
+def unban(user_id: int):
+    banned_db.pop(str(user_id))
+    banlist_db.pop(str(user_id))
+    
+def is_banned(user_id: int):
+    if banned_db.get(str(user_id)) is not None:
+        return banned_db.get(str(user_id)).decode() == BANNED_STR
+    else:
+        return False
+
+def get_banlist():
+    banlist = ""
+    
+    for key, value in banlist_db.items():
+        banlist += 'ID: ' + f'<a href="tg://user?id={key.decode()}">' + key.decode() + "</a>\n      " + value.decode() + "\n"
+    return banlist
+    
+    
+    
+async def ban_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = 0
+    if len(context.args) >= 1 and context.args[0].isdigit():
+        user_id = context.args[0]
+        reason = ban_reason_from_args(update, context, True)
+        ban(user_id, reason)
+        
+    elif update.message.reply_to_message is not None:
+        user_id = get_user_id(update)
+        if user_id is not None:
+            reason = ban_reason_from_args(update, context, False)
+            ban(user_id, reason)
+        else:
+            await context.bot.send_message(
+                chat_id=settings.TELEGRAM_SUPPORT_CHAT_ID,
+                text=settings.SUPPORT_SIDE__WRONG_REPLY,
+                parse_mode='HTML'
+            )
+            return
+    else:
+        await context.bot.send_message(
+            chat_id=settings.TELEGRAM_SUPPORT_CHAT_ID,
+            text=settings.SUPPORT_SIDE__COMMAND__BAN_USAGE,
+            parse_mode='HTML'
+        )
+        return
+    
+    await context.bot.send_message(
+        chat_id=settings.TELEGRAM_SUPPORT_CHAT_ID,
+        text=str(user_id) + "\n\n"+ settings.SUPPORT_SIDE__COMMAND__BAN_SUCCESSFUL,
+        parse_mode='HTML'
+    )
+
+
+
+def ban_reason_from_args(update: Update, context: ContextTypes.DEFAULT_TYPE, id_is_in_args: bool):
+    reason = ''
+    if len(context.args) > 1:
+        reason_array = update.effective_message.text.split(" ")    
+        del reason_array[0]
+        if id_is_in_args:
+            del reason_array[0]
+        reason = ' '.join(reason_array)
+    else:
+        reason = settings.DEFAULT_BAN_REASON
+    return reason
+
+
+
+async def unban_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = 0
+    if len(context.args) == 1 and context.args[0].isdigit():
+        user_id = context.args[0]
+        unban(user_id)
+    elif update.message.reply_to_message is not None:
+        user_id = get_user_id(update)
+        if user_id is not None:
+            unban(user_id)
+        else:
+            await context.bot.send_message(
+                chat_id=settings.TELEGRAM_SUPPORT_CHAT_ID,
+                text=settings.SUPPORT_SIDE__WRONG_REPLY,
+                parse_mode='HTML'
+            )
+            return
+    else:
+        await context.bot.send_message(
+            chat_id=settings.TELEGRAM_SUPPORT_CHAT_ID,
+            text=settings.SUPPORT_SIDE__COMMAND__BAN_USAGE,
+            parse_mode='HTML'
+        )
+        return
+    
+    await context.bot.send_message(
+        chat_id=settings.TELEGRAM_SUPPORT_CHAT_ID,
+        text=str(user_id) + "\n\n"+ settings.SUPPORT_SIDE__COMMAND__UNBAN_SUCCESSFUL,
+        parse_mode='HTML'
+    )
+
+async def banlist_callback(update: object, context: ContextTypes.DEFAULT_TYPE):
+    await context.bot.send_message(
+        chat_id=settings.TELEGRAM_SUPPORT_CHAT_ID,
+        text=get_banlist(),
+        parse_mode='HTML'
+    )
+
+async def do_nothing(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    pass
+
+
+
+def make_available_only_for_not_banned(callback: Callable) -> Callable:
+    """Decorator to restrict access to non-banned users."""
+    @wraps(callback)
+    def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Callable:
+        if is_banned(update.effective_user.id):
+            return do_nothing(update, context)
+        return callback(update, context)
+    
+    return wrapper
+    
+    
+# copy-pasted from https://github.com/python-telegram-bot/python-telegram-bot/blob/master/examples/errorhandlerbot.py
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Log the error and send a telegram message to notify the developer."""
+    # Log the error before we do anything else, so we can see it even if something breaks.
+    logger.error("Exception while handling an update:", exc_info=context.error)
+
+    # traceback.format_exception returns the usual python message about an exception, but as a
+    # list of strings rather than a single string, so we have to join them together.
+    tb_list = traceback.format_exception(None, context.error, context.error.__traceback__)
+    tb_string = "".join(tb_list)
+
+    # Build the message with some markup and additional information about what happened.
+    # You might need to add some logic to deal with messages longer than the 4096 character limit.
+    update_str = update.to_dict() if isinstance(update, Update) else str(update)
+    message = (
+        "An exception was raised while handling an update\n"
+        f"<pre>update = {html.escape(json.dumps(update_str, indent=2, ensure_ascii=False))}"
+        "</pre>\n\n"
+        f"<pre>context.chat_data = {html.escape(str(context.chat_data))}</pre>\n\n"
+        f"<pre>context.user_data = {html.escape(str(context.user_data))}</pre>\n\n"
+        f"<pre>{html.escape(tb_string)}</pre>"
+    )
+
+    # Finally, send the message
+    await context.bot.send_message(
+        chat_id=settings.TELEGRAM_SUPPORT_CHAT_ID, text=message, parse_mode='HTML'
+    )
+
+
+
+def setup_dispatcher(app: Application):
+    app.add_handler(CommandHandler('start', make_available_only_for_not_banned(start)))
+    app.add_handler(CommandHandler("ban", filters=filters.Chat(settings.TELEGRAM_SUPPORT_CHAT_ID), callback=ban_callback))
+    app.add_handler(CommandHandler("unban", filters=filters.Chat(settings.TELEGRAM_SUPPORT_CHAT_ID), callback=unban_callback))
+    app.add_handler(CommandHandler("banlist", filters=filters.Chat(settings.TELEGRAM_SUPPORT_CHAT_ID), callback=banlist_callback))
+    app.add_handler(MessageHandler(filters.ChatType.PRIVATE, make_available_only_for_not_banned(forward_to_chat)))
+    app.add_handler(MessageHandler(filters.Chat(settings.TELEGRAM_SUPPORT_CHAT_ID) & filters.REPLY, make_available_only_for_not_banned(forward_to_user)))
+    # app.add_error_handler(error_handler)
