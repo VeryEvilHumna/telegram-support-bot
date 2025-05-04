@@ -26,6 +26,9 @@ TELEGRAM_SUPPORT_CHAT_ID = int(TELEGRAM_SUPPORT_CHAT_ID)
 # Bot uses ` parse_mode='HTML' `
 
 
+# Translation guide:
+# Copy-paste this file in any decent LLM and ask it to translate every string to your language of choice
+
 # text of a message that bot will write to user on /start command
 USER_SIDE__WELCOME_MESSAGE = """
 Привет! Через этого бота вы можете связаться с администрацией
