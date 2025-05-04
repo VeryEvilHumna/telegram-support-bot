@@ -1,45 +1,43 @@
 # telegram-support-bot
-Easy way to use Telegram bot to hide your identity. Useful for support, anonymous channel management. Free clone of Livegram Bot. 
 
-## How bot works:
+Simple, easy to use, stateless Telegram bot to hide your identity. Useful for support, anonymous channel management. Free clone of Livegram Bot.
 
-1. Your client write a message to your bot
-2. Bot forwards the message to your secret chat
-3. Any chat participant can reply on a forwarded message 
-4. Bot will copy the message and send it to your client
+## How bot works
 
-If client user deny forward his username with messages support, bot also write message with client ID to support chat, so support team must reply to this message, not user original message.
+1. User writes a message to your bot
+2. Bot forwards the message to your support chat (with only you or with your support team for example)
+3. Any support chat participant can reply to a forwarded message
+4. Bot will copy the message and send it to user
+
+If user disabled forwarding his username with messages (in TG privacy settings), bot would send message with user ID to support chat after user's forwarded message. Support team should reply to this message, not forwarded message. That's a technical limitation by telegram and there is not much we can do about it
 
 ## .env variables
 
 You need to specify these env variables to run this bot. If you run it locally, you can also write them in `.env` text file.
 
 ``` bash
-TELEGRAM_TOKEN=  # your bot's token
-TELEGRAM_SUPPORT_CHAT_ID=  # chat_id where the bot will forward all incoming messages
+TELEGRAM_TOKEN=12345678:longstringofletterslonglonglong # your bot's token
+TELEGRAM_SUPPORT_CHAT_ID=-9876543210 # chat_id where the bot will forward all incoming messages. 
 
-# optional params
-WELCOME_MESSAGE=  # text of a message that bot will write on /start command
-
-# If user don't allow forward his messages Bot adds his comment with thue user_id to reply
-# Support team must reply to "bot reply", not to original user forwarded message
-# Customize message for support team here:
-REPLY_TO_THIS_MESSAGE=User above not allow forward his messages. Reply to this message.
-
-# If support reply to forwarded messages with hidded sender, bot warns with next error:
-WRONG_REPLY=User above not allow forward his messages. You must reply to bot reply under user forwarded message.
-
+# You can enable "Show Peer IDs in Profile" settings in Telegram Desktop and look in the chat description to get ID. Settings -> Advanced -> scroll down -> Experimental 
+# Also, you can use https://t.me/ShowJsonBot to find it's chat_id.
 ```
 
 ## Run bot locally
 
-First, you need to install all dependencies:
+1. Create virtual environment (optional) 
+
+2. Install all dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Then you can run the bot. Don't forget to create `.env` file in the root folder with all required params (read above).
+3. Configure .env file
+
+4. (optional) Change strings or tweak settings in `settings.py` file
+
+6. Run the bot:
 
 ``` bash
 python main.py
