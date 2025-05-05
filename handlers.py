@@ -171,7 +171,10 @@ def get_banlist():
     banlist = ""
     
     for key, value in banlist_db.items():
-        banlist += 'ID: ' + f'<a href="tg://user?id={key.decode()}">' + key.decode() + "</a>\n      " + value.decode() + "\n"
+        try:
+            banlist += 'ID: ' + f'<a href="tg://user?id={key.decode()}">' + key.decode() + "</a>\n      " + value.decode() + "\n"
+        except UnicodeDecodeError:
+                        banlist += 'ID: ' + f'<a href="tg://user?id={key.decode()}">' + key.decode() + "</a>\n      (Failed to decode)" + str(value) + "\n"
     return banlist
     
     
