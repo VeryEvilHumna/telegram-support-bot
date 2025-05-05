@@ -94,8 +94,14 @@ pip install -r requirements.txt
 
 5. (optional) Change strings or tweak settings (there is a lot) in `settings.py` file
 
-6. Run the bot:
+5. Run the bot:
 
 ``` bash
 python main.py
 ```
+
+## Authors
+
+This is a fork of [rus-ai's fork](https://github.com/rus-ai/telegram-support-bot) of [ohld's telegram-support-bot](https://github.com/ohld/telegram-support-bot)
+
+Thanks to all contributors of this and downstream projects
