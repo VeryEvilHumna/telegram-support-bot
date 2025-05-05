@@ -99,3 +99,9 @@ pip install -r requirements.txt
 ``` bash
 python main.py
 ```
+
+## Authors
+
+This is a fork of [rus-ai's fork](https://github.com/rus-ai/telegram-support-bot) of [ohld's telegram-support-bot](https://github.com/ohld/telegram-support-bot)
+
+Thanks to all contributors of this and downstream projects
