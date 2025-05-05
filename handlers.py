@@ -3,6 +3,7 @@ from asyncio.log import logger
 from functools import wraps
 import html
 import json
+import os
 import time
 import traceback
 from telegram import Chat, Update
@@ -10,8 +11,11 @@ from telegram.ext import CommandHandler, MessageHandler, filters, ContextTypes, 
 import dbm
 from typing import Callable
 from datetime import datetime
+import schedule 
 
 import settings
+
+os.makedirs("data", exist_ok=True)
 
 banned_db = dbm.open(file="data/banned.dbm", flag="c")
 BANNED_STR = "b"
@@ -120,6 +124,8 @@ async def forward_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     message_id=update.message.message_id,
                     reaction=settings.SUPPORT_SIDE__REACTION_MESSAGE_SUCCESSFULLY_FORWARDED
                 )
+                # Reset ratelimits
+                timestamps_of_last_messages[update.effective_user.id].clear()
             else:
                 await context.bot.send_message(
                     chat_id=settings.TELEGRAM_SUPPORT_CHAT_ID,
@@ -135,6 +141,7 @@ async def forward_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
 def get_user_id(update: Update):
+    user_id = None
     if update.message.reply_to_message.forward_from:
         user_id = update.message.reply_to_message.forward_from.id
     elif update.message.reply_to_message.text and settings.SUPPORT_SIDE__REPLY_TO_THIS_MESSAGE in update.message.reply_to_message.text or settings.SUPPORT_SIDE__USER_TRIED_FORWARDING_MESSAGE in update.message.reply_to_message.text:
@@ -168,19 +175,21 @@ def get_banlist():
     return banlist
     
     
-    
-async def ban_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# returns user_id on successful ban
+async def base_ban_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user_id = 0
     if len(context.args) >= 1 and context.args[0].isdigit():
         user_id = context.args[0]
         reason = ban_reason_from_args(update, context, True)
         ban(user_id, reason)
+        return user_id
         
     elif update.message.reply_to_message is not None:
         user_id = get_user_id(update)
         if user_id is not None:
             reason = ban_reason_from_args(update, context, False)
             ban(user_id, reason)
+            return user_id
         else:
             await context.bot.send_message(
                 chat_id=settings.TELEGRAM_SUPPORT_CHAT_ID,
@@ -195,12 +204,6 @@ async def ban_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='HTML'
         )
         return
-    
-    await context.bot.send_message(
-        chat_id=settings.TELEGRAM_SUPPORT_CHAT_ID,
-        text=str(user_id) + "\n\n"+ settings.SUPPORT_SIDE__COMMAND__BAN_SUCCESSFUL,
-        parse_mode='HTML'
-    )
 
 
 
@@ -244,7 +247,7 @@ async def unban_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await context.bot.send_message(
         chat_id=settings.TELEGRAM_SUPPORT_CHAT_ID,
-        text=str(user_id) + "\n\n"+ settings.SUPPORT_SIDE__COMMAND__UNBAN_SUCCESSFUL,
+        text=settings.SUPPORT_SIDE__COMMAND__UNBAN_SUCCESSFUL,
         parse_mode='HTML'
     )
 
@@ -255,21 +258,84 @@ async def banlist_callback(update: object, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='HTML'
     )
 
-async def do_nothing(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    pass
 
 
+timestamps_of_last_messages: dict[int, list[float]] = {}
 
-def make_available_only_for_not_banned(callback: Callable) -> Callable:
-    """Decorator to restrict access to non-banned users."""
+async def middleware(callback: Callable) -> Callable:
     @wraps(callback)
-    def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Callable:
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Callable:
+        # 1. Ignore requests from banned users
         if is_banned(update.effective_user.id):
-            return do_nothing(update, context)
-        return callback(update, context)
+            return
+        
+        # 2. Rate limiting
+        schedule.run_pending()
+        
+        if timestamps_of_last_messages.get(update.effective_user.id) is None:
+            timestamps_of_last_messages[update.effective_user.id] = [time.time()]
+        else:
+            timestamps_of_last_messages.get(update.effective_user.id).append(time.time())
+        
+        messages_in_window = 0
+        now_minus_window_time = time.time() - settings.RATELIMIT_TIME_WINDOW_SEC
+        for ts in timestamps_of_last_messages[update.effective_user.id]:
+            if now_minus_window_time < ts:
+                messages_in_window +=1
+
+        if messages_in_window >= settings.RATELIMIT_WARN_AFTER_THIS_MANY_MESSAGES_IN_WINDOW:
+            await context.bot.send_message(
+                    chat_id=update.message.chat.id,
+                    parse_mode='HTML',
+                    text=settings.USER_SIDE__RATELIMIT_WARN_MESSAGE
+            )
+        if messages_in_window >= settings.RATELIMIT_BAN_AFTER_THIS_MANY_MESSAGES_IN_WINDOW:
+            print(f"User {update.effective_user.id}, @{update.effective_user.username}: {update.effective_user.first_name} {update.effective_user.last_name} has been banned for reaching the ratelimit")
+            ban(update.effective_user.id, settings.ratelimit_ban_reason())
+            future1 = context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    parse_mode='HTML',
+                    text=settings.USER_SIDE__RATELIMIT_BAN_MESSAGE
+            )
+            future2 = context.bot.send_message(
+                    chat_id=settings.TELEGRAM_SUPPORT_CHAT_ID,
+                    parse_mode='HTML',
+                    text=settings.SUPPORT_SIDE__ratelimit_ban_message(update)
+            )
+            
+            await asyncio.gather(future1, future2)
+            return
+            
+        return await callback(update, context)
     
     return wrapper
     
+    
+    
+async def loudban_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = await base_ban_callback(update, context)
+    if user_id:
+        await context.bot.send_message(
+            chat_id=user_id,
+            parse_mode='HTML',
+            text=settings.USER_SIDE__LOUDBAN_BANNED_BY_SUPPORT
+        )
+        await context.bot.send_message(
+            chat_id=settings.TELEGRAM_SUPPORT_CHAT_ID,
+            parse_mode='HTML',
+            text=settings.SUPPORT_SIDE__COMMAND__LOUDBAN_SUCCESSFUL
+        )
+    
+async def quietban_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = await base_ban_callback(update, context)
+    if user_id:
+        await context.bot.send_message(
+            chat_id=settings.TELEGRAM_SUPPORT_CHAT_ID,
+            parse_mode='HTML',
+            text=settings.SUPPORT_SIDE__COMMAND__QUIETBAN_SUCCESSFUL
+        )
+
+
     
 # copy-pasted from https://github.com/python-telegram-bot/python-telegram-bot/blob/master/examples/errorhandlerbot.py
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -301,11 +367,21 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 
-def setup_dispatcher(app: Application):
-    app.add_handler(CommandHandler('start', make_available_only_for_not_banned(start)))
-    app.add_handler(CommandHandler("ban", filters=filters.Chat(settings.TELEGRAM_SUPPORT_CHAT_ID), callback=ban_callback))
+def ratelimit_cleanup():
+    for user_id, marr in timestamps_of_last_messages.items():
+        for i, ts in enumerate(marr):
+            if time.time() - settings.RATELIMIT_TIME_WINDOW_SEC > ts:
+                del marr[i]
+
+
+async def setup_dispatcher(app: Application):
+    app.add_handler(CommandHandler('start', await middleware(start)))
+    app.add_handler(CommandHandler("quietban", filters=filters.Chat(settings.TELEGRAM_SUPPORT_CHAT_ID), callback=quietban_callback))
+    app.add_handler(CommandHandler("ban", filters=filters.Chat(settings.TELEGRAM_SUPPORT_CHAT_ID), callback=loudban_callback))
     app.add_handler(CommandHandler("unban", filters=filters.Chat(settings.TELEGRAM_SUPPORT_CHAT_ID), callback=unban_callback))
     app.add_handler(CommandHandler("banlist", filters=filters.Chat(settings.TELEGRAM_SUPPORT_CHAT_ID), callback=banlist_callback))
-    app.add_handler(MessageHandler(filters.ChatType.PRIVATE, make_available_only_for_not_banned(forward_to_chat)))
-    app.add_handler(MessageHandler(filters.Chat(settings.TELEGRAM_SUPPORT_CHAT_ID) & filters.REPLY, make_available_only_for_not_banned(forward_to_user)))
+    app.add_handler(MessageHandler(filters.ChatType.PRIVATE, await middleware(forward_to_chat)))
+    app.add_handler(MessageHandler(filters.Chat(settings.TELEGRAM_SUPPORT_CHAT_ID) & filters.REPLY, await middleware(forward_to_user)))
     # app.add_error_handler(error_handler)
+
+    schedule.every(settings.RATELIMIT_TIME_WINDOW_SEC).seconds.do(ratelimit_cleanup)

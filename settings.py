@@ -1,6 +1,7 @@
+import html
 import os
 from dotenv import load_dotenv, find_dotenv
-from telegram import User, constants
+from telegram import User, constants, Update
 
 load_dotenv(find_dotenv())
 
@@ -100,8 +101,59 @@ ID пользователя: {user_info.id}
 """
 
 
-SUPPORT_SIDE__COMMAND__BAN_USAGE = "SUPPORT_SIDE__COMMAND__BAN_USAGE"
-SUPPORT_SIDE__COMMAND__BAN_SUCCESSFUL = "SUPPORT_SIDE__COMMAND__BAN_SUCCESSFUL"
-SUPPORT_SIDE__COMMAND__UNBAN_SUCCESSFUL = "SUPPORT_SIDE__COMMAND__UNBAN_SUCCESSFUL"
+SUPPORT_SIDE__COMMAND__BAN_USAGE = html.escape("""
+Использование: /[ban | quietban] [<user_id> | ответ на сообщение] [<причина>]
 
-DEFAULT_BAN_REASON = "DEFAULT_BAN_REASON"
+Где:
+- <user_id>: ID пользователя, которого нужно заблокировать
+- ответ на сообщение: Вы можете ответить на сообщение пользователя, чтобы заблокировать его без указания ID.
+- <причина>: (Необязательная) причина блокировки пользователя
+
+Пример:
+/ban 5268501992 Спам
+Или (ответив на сообщение пользователя)
+/ban Спам
+""")
+
+SUPPORT_SIDE__COMMAND__LOUDBAN_SUCCESSFUL = "🚩 Пользователь был успешно заблокирован и уведомлён об этом"
+SUPPORT_SIDE__COMMAND__QUIETBAN_SUCCESSFUL = "🤫 Пользователь был успешно заблокирован без уведомления о бане"
+SUPPORT_SIDE__COMMAND__UNBAN_SUCCESSFUL = "🕊️ Пользователь был успешно разблокирован"
+
+USER_SIDE__LOUDBAN_BANNED_BY_SUPPORT = """
+🚩 <b>Вы были заблокированы администрацией!</b>
+
+Бот перестанет реагировать на ваши сообщения, они не будут переадресованы администрации. Обжаловать это решение нельзя.
+"""
+
+DEFAULT_BAN_REASON = "Причина бана не была указана"
+
+
+# Allow user to send RATELIMIT_BAN_AFTER_THIS_MANY_MESSAGES_IN_WINDOW messages 
+# in RATELIMIT_TIME_WINDOW_SEC seconds, ban user if user sends
+# more messages in RATELIMIT_TIME_WINDOW_SEC seconds
+RATELIMIT_BAN_AFTER_THIS_MANY_MESSAGES_IN_WINDOW = 8
+RATELIMIT_WARN_AFTER_THIS_MANY_MESSAGES_IN_WINDOW = 5
+RATELIMIT_TIME_WINDOW_SEC = 30
+
+USER_SIDE__RATELIMIT_WARN_MESSAGE = """
+⚠️ <b>Стоп стоп стоп!</b>
+
+Спам в бота никак не ускорит ответ администрации. Если вы продолжите спамить, бот автоматически вас забанит, <b>без возможности обжаловать это решение</b>
+"""
+
+USER_SIDE__RATELIMIT_BAN_MESSAGE = """
+🚩 Бан! Бот вас предупредил, но вы всё равно продолжили отправлять сообщения слишком быстро
+
+Бот больше не будет реагировать на ваши сообщения и пересылать их администрации
+"""
+
+def SUPPORT_SIDE__ratelimit_ban_message(update: Update) -> str:
+    return f"""
+🤡 Пользователь <a href="tg://user?id={update.effective_user.id}">{update.effective_user.first_name} {update.effective_user.last_name}</a> @{update.effective_user.username if update.effective_user.username != "" else "нет юзернейма"}. ID: {update.effective_user.id}
+был забанен после превышения рейтлимита {RATELIMIT_BAN_AFTER_THIS_MANY_MESSAGES_IN_WINDOW + 1} сообщений за {RATELIMIT_TIME_WINDOW_SEC} секунд.
+
+Пользователь был предупреждён после его {RATELIMIT_WARN_AFTER_THIS_MANY_MESSAGES_IN_WINDOW + 1} сообщений(ия) и всё равно продолжил спамить
+"""
+
+def ratelimit_ban_reason():
+    return f"""Пользователь был забанен после превышения рейтлимита {RATELIMIT_BAN_AFTER_THIS_MANY_MESSAGES_IN_WINDOW + 1} сообщений за {RATELIMIT_TIME_WINDOW_SEC} секунд. Пользователь был предупреждён после его {RATELIMIT_WARN_AFTER_THIS_MANY_MESSAGES_IN_WINDOW + 1} сообщений(ия) и всё равно продолжил спамить"""
