@@ -80,17 +80,19 @@ TELEGRAM_SUPPORT_CHAT_ID=-9876543210 # chat_id where the bot will forward all in
 
 ## Run bot locally
 
-1. Create virtual environment (optional)
+1. Select stateful or stateless version, clone the repo and checkout `stateless` branch if you want to run the stateless version. `stateful` branch is the default one, that would be checked-out immediately after the clone
 
-2. Install all dependencies:
+2. Create python virtual environment (optional)
+
+3. Install all dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Configure .env file
+4. Configure .env file
 
-4. (optional) Change strings or tweak settings in `settings.py` file
+5. (optional) Change strings or tweak settings (there is a lot) in `settings.py` file
 
 5. Run the bot:
 
