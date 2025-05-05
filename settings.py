@@ -127,6 +127,8 @@ USER_SIDE__LOUDBAN_BANNED_BY_SUPPORT = """
 
 DEFAULT_BAN_REASON = "Причина бана не была указана"
 
+SUPPORT_SIDE__EMPTY_BANLIST = "В банлисте никого нет"
+
 
 # Allow user to send RATELIMIT_BAN_AFTER_THIS_MANY_MESSAGES_IN_WINDOW messages 
 # in RATELIMIT_TIME_WINDOW_SEC seconds, ban user if user sends
@@ -157,3 +159,19 @@ def SUPPORT_SIDE__ratelimit_ban_message(update: Update) -> str:
 
 def ratelimit_ban_reason():
     return f"""Пользователь был забанен после превышения рейтлимита {RATELIMIT_BAN_AFTER_THIS_MANY_MESSAGES_IN_WINDOW + 1} сообщений за {RATELIMIT_TIME_WINDOW_SEC} секунд. Пользователь был предупреждён после его {RATELIMIT_WARN_AFTER_THIS_MANY_MESSAGES_IN_WINDOW + 1} сообщений(ия) и всё равно продолжил спамить"""
+
+SUPPORT_SIDE__REACTION_MESSAGE_SUCCESSFULLY_DELETED = constants.ReactionEmoji.SEE_NO_EVIL_MONKEY
+SUPPORT_SIDE__COMMAND__DELETE_USAGE = """
+Прописывая комманду /delete необходимо отвечать на сообщение оператора, которое вы желаете удалить
+"""
+
+SUPPORT_SIDE__COMMAND__DELETE_SUCCESSFUL = f"""🗑️ Сообщение оператора было успешно удалено 
+
+Для удобства чтения логов сообщений, бот реагирует на удалённые сообщения реакцией {SUPPORT_SIDE__REACTION_MESSAGE_SUCCESSFULLY_DELETED}
+"""
+
+SUPPORT_SIDE__COMMAND__DELETE_ERROR = """
+😟 Не удалось удалить сообщение
+
+Оно или было отправлено 48 или больше часов назад, или не сохранилось в базе данных бота
+"""

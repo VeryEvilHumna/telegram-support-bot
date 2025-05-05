@@ -2,11 +2,20 @@
 
 Simple, easy to use, Telegram bot to hide your identity. Useful for support, anonymous channel management. Free clone of Livegram Bot.
 
+## How this bot works
+
+1. User writes a message to your bot
+2. Bot forwards the message to your support chat (with only you or with your support team for example)
+3. Any support chat participant can reply to a forwarded message
+4. Bot will copy the message and send it to user
+
+If user disabled forwarding his username with messages (in TG privacy settings), bot would send message with user ID to support chat after user's forwarded message. Support team should reply to this message, not forwarded message. That's a technical limitation by telegram and there is not much we can do about it
+
 ## Stateful vs stateless version
 
 There exists two versions of this bot, stateful and stateless. Stateful is more feature rich, but it stores data for ratelimiting (timestamps and user ID's) in memory and requires persistent storage for list of banned users
 
-Stateless doesn't need any persistent storage
+Stateless doesn't need any persistent storage, it doesn't store anything at all (even in memory), hence the name
 
 ## Features (stateful only)
 
@@ -15,7 +24,8 @@ Available commands (only through support chat, users have no access to them):
 - /ban
 - /unban
 - /quietban
-- /banlist
+- /banlist — Shows all banned users
+- /delete — Deletes message sent by support from user's chat (can be deleted only 48hrs after sending — telegram technical limitation)
 
 Ban-related commands usage:
 
@@ -47,16 +57,14 @@ ID: 283749746
       The user was banned after exceeding the rate limit of 6 messages in 10 seconds. The user was warned after their 4th message(s) and still continued to spam.
 ```
 
-Bot embeds clickable links to users in ID's if user who's ID bot is tried to embedded had already interacted with bot
+Bot embeds clickable links to users in ID strings if user who's ID bot is tried to embed had already interacted with bot
 
-## How bot works
+`/delete` usage
+```
+When using the /delete command, you must reply to the operator's message that you wish to delete
+```
 
-1. User writes a message to your bot
-2. Bot forwards the message to your support chat (with only you or with your support team for example)
-3. Any support chat participant can reply to a forwarded message
-4. Bot will copy the message and send it to user
-
-If user disabled forwarding his username with messages (in TG privacy settings), bot would send message with user ID to support chat after user's forwarded message. Support team should reply to this message, not forwarded message. That's a technical limitation by telegram and there is not much we can do about it
+Bot reacts with different reaction to messages, that had been successfully deleted (🙈 by default, configurable in `settings.py`)
 
 ## .env variables
 

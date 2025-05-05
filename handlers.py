@@ -7,6 +7,7 @@ import os
 import time
 import traceback
 from telegram import Chat, Update
+from telegram.error import BadRequest
 from telegram.ext import CommandHandler, MessageHandler, filters, ContextTypes, Application
 import dbm
 from typing import Callable
@@ -21,6 +22,8 @@ banned_db = dbm.open(file="data/banned.dbm", flag="c")
 BANNED_STR = "b"
 
 banlist_db = dbm.open(file="data/banlist.dbm", flag="c")
+
+smtoum_db = dbm.open(file="data/support_messages_to_user_messages_map.dbm", flag="c")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(settings.USER_SIDE__WELCOME_MESSAGE)
@@ -124,6 +127,8 @@ async def forward_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     message_id=update.message.message_id,
                     reaction=settings.SUPPORT_SIDE__REACTION_MESSAGE_SUCCESSFULLY_FORWARDED
                 )
+                # Save message mapping so we can delete it later
+                smtoum_db[str(update.effective_message.id)] = f"{str(user_id)},{str(message_id.message_id)}"
                 # Reset ratelimits
                 timestamps_of_last_messages[update.effective_user.id].clear()
             else:
@@ -175,7 +180,7 @@ def get_banlist():
             banlist += 'ID: ' + f'<a href="tg://user?id={key.decode()}">' + key.decode() + "</a>\n      " + value.decode() + "\n"
         except UnicodeDecodeError:
                         banlist += 'ID: ' + f'<a href="tg://user?id={key.decode()}">' + key.decode() + "</a>\n      (Failed to decode)" + str(value) + "\n"
-    return banlist
+    return banlist if banlist.__len__() != 0 else settings.SUPPORT_SIDE__EMPTY_BANLIST
     
     
 # returns user_id on successful ban
@@ -370,6 +375,48 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 
+async def delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.reply_to_message is not None:
+        data_bytes = smtoum_db.get(str(update.message.reply_to_message.id))
+        
+        if data_bytes:
+            chat_id, user_side_msg_id = data_bytes.decode().split(",")
+            isDeleted = False
+            try:
+                isDeleted = await context.bot.delete_message(
+                    message_id=int(user_side_msg_id),
+                    chat_id=int(chat_id)
+                )
+            except BadRequest:
+                isDeleted = False
+            if isDeleted:
+                await context.bot.send_message(
+                    chat_id=settings.TELEGRAM_SUPPORT_CHAT_ID,
+                    parse_mode='HTML',
+                    text=settings.SUPPORT_SIDE__COMMAND__DELETE_SUCCESSFUL
+                )
+                await context.bot.set_message_reaction(
+                    chat_id=settings.TELEGRAM_SUPPORT_CHAT_ID,
+                    message_id=update.message.reply_to_message.id,
+                    reaction=settings.SUPPORT_SIDE__REACTION_MESSAGE_SUCCESSFULLY_DELETED,
+                    is_big=True
+                )
+                return
+        await context.bot.send_message(
+            chat_id=settings.TELEGRAM_SUPPORT_CHAT_ID,
+            parse_mode='HTML',
+            text=settings.SUPPORT_SIDE__COMMAND__DELETE_ERROR
+        )
+    else:
+        await context.bot.send_message(
+            chat_id=settings.TELEGRAM_SUPPORT_CHAT_ID,
+            parse_mode='HTML',
+            text=settings.SUPPORT_SIDE__COMMAND__DELETE_USAGE
+        )
+
+        
+        
+
 def ratelimit_cleanup():
     for user_id, marr in timestamps_of_last_messages.items():
         for i, ts in enumerate(marr):
@@ -383,6 +430,7 @@ async def setup_dispatcher(app: Application):
     app.add_handler(CommandHandler("ban", filters=filters.Chat(settings.TELEGRAM_SUPPORT_CHAT_ID), callback=loudban_callback))
     app.add_handler(CommandHandler("unban", filters=filters.Chat(settings.TELEGRAM_SUPPORT_CHAT_ID), callback=unban_callback))
     app.add_handler(CommandHandler("banlist", filters=filters.Chat(settings.TELEGRAM_SUPPORT_CHAT_ID), callback=banlist_callback))
+    app.add_handler(CommandHandler("delete", filters=filters.Chat(settings.TELEGRAM_SUPPORT_CHAT_ID), callback=delete_callback))
     app.add_handler(MessageHandler(filters.ChatType.PRIVATE, await middleware(forward_to_chat)))
     app.add_handler(MessageHandler(filters.Chat(settings.TELEGRAM_SUPPORT_CHAT_ID) & filters.REPLY, await middleware(forward_to_user)))
     # app.add_error_handler(error_handler)
