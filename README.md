@@ -11,6 +11,19 @@ Simple, easy to use, Telegram bot to hide your identity. Useful for support, ano
 
 If user disabled forwarding his username with messages (in TG privacy settings), bot would send message with user ID to support chat after user's forwarded message. Support team should reply to this message, not forwarded message. That's a technical limitation by telegram and there is not much we can do about it
 
+## Difference between this fork and upstream projects
+
+* (stateful only) Ability to ban users.
+* (stateful only) Ability to delete messages from support side.
+* (stateful only) Ratelimiting (warns user first, next time bans) that bans spammers. 
+* Moved strings from .env to `settings.py` (so we could include them in git log).
+* Made sending a message to support optional and configurable when a user clicks `/start`.
+* Fixed exploit related to forwarding already forwarded messages from users; forbid the bot from forwarding forwarded messages.
+* The bot now sets a reaction to successfully forwarded messages (on the support side only).
+* Added advanced formatting for all strings using Telegram HTML syntax.
+* Added a configurable option to forbid users from sending voice and round video messages.
+* Added an alert for user side indicating that replies are not forwarded, only the content of the message.
+
 ## Stateful vs stateless version
 
 There exists two versions of this bot, stateful and stateless. Stateful is more feature rich, but it stores data for ratelimiting (timestamps and user ID's) in memory and requires persistent storage for list of banned users
@@ -104,4 +117,4 @@ python main.py
 
 This is a fork of [rus-ai's fork](https://github.com/rus-ai/telegram-support-bot) of [ohld's telegram-support-bot](https://github.com/ohld/telegram-support-bot)
 
-Thanks to all contributors of this and downstream projects
+Thanks to all contributors of this and upstream projects
