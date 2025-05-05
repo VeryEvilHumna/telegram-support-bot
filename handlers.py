@@ -1,3 +1,10 @@
+# Yes it is messy.
+# Yes it needs refactor.
+# But it works this way too. 
+# It's simple enough for it.
+#
+# "Write till hurts, then refactor"
+
 import asyncio
 from asyncio.log import logger
 from functools import wraps
